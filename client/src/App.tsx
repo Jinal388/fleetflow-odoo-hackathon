@@ -1,15 +1,18 @@
+import React from "react";
+import { BrowserRouter } from "react-router-dom";
+import "./index.css";
+import "./App.css";
+import AppRoutes from "./routes/AppRoutes";
+import { FleetProvider } from "./context/FleetContext";
 
-import './App.css'
-
-function App() {
-
+const App: React.FC = () => {
   return (
-    <>
-      <p className="px-10 bg-red-500">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    <BrowserRouter>
+      <FleetProvider>
+        <AppRoutes />
+      </FleetProvider>
+    </BrowserRouter>
+  );
+};
 
-export default App
+export default App;

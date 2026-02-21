@@ -1,1 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @import "tailwindcss";
+
+@theme {
+  --color-background: hsl(220 20% 97%);
+  --color-foreground: hsl(240 10% 4%);
+
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(220 25% 10%);
+
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(220 25% 10%);
+  /* Indigo/Violet Theme for a premium SaaS feel */
+  --color-primary: hsl(252 87% 60%);
+  --color-primary-foreground: hsl(0 0% 100%);
+
+  --color-secondary: hsl(240 5% 96%);
+  --color-secondary-foreground: hsl(220 25% 10%);
+
+  --color-muted: hsl(240 5% 90%);
+  --color-muted-foreground: hsl(240 4% 46%);
+
+  /* Amber for highlight/accents instead of Green */
+  --color-accent: hsl(45 93% 47%);
+  --color-accent-foreground: hsl(0 0% 100%);
+
+  --color-destructive: hsl(0 84% 60%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+
+  --color-border: hsl(240 5% 84%);
+  --color-input: hsl(240 5% 84%);
+  --color-ring: hsl(252 87% 60%);
+
+  --radius: 0.625rem;
+
+  /* Darker indigo/slate for the sidebar */
+  --color-sidebar-background: hsl(240 25% 12%);
+  --color-sidebar-foreground: hsl(240 10% 80%);
+  --color-sidebar-primary: hsl(152 60% 45%);
+  --color-sidebar-primary-foreground: hsl(0 0% 100%);
+  --color-sidebar-accent: hsl(252 50% 30%);
+  --color-sidebar-accent-foreground: hsl(0 0% 95%);
+  --color-sidebar-border: hsl(240 25% 18%);
+  --color-sidebar-ring: hsl(152 60% 45%);
+
+  --color-warning: hsl(38 92% 50%);
+  --color-warning-foreground: hsl(0 0% 100%);
+  --color-success: hsl(152 60% 36%);
+  --color-success-foreground: hsl(0 0% 100%);
+  --color-info: hsl(210 100% 52%);
+  --color-info-foreground: hsl(0 0% 100%);
+
+  --color-chart-1: hsl(152 60% 36%);
+  --color-chart-2: hsl(210 100% 52%);
+  --color-chart-3: hsl(38 92% 50%);
+  --color-chart-4: hsl(280 65% 60%);
+  --color-chart-5: hsl(0 72% 51%);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    @apply font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply tracking-tight font-semibold;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    background-color: color-mix(in srgb, var(--color-card) 80%, transparent);
+    @apply backdrop-blur-sm shadow-sm;
+    border: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  }
+
+  .kpi-card {
+    background-color: var(--color-card);
+    border: 1px solid var(--color-border);
+    @apply rounded-xl p-5 shadow-sm transition-all duration-200 hover:shadow-md;
+  }
+
+  .kpi-card:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-active {
+    background-color: var(--color-accent);
+    color: var(--color-accent-foreground);
+  }
+
+  .status-warning {
+    background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+    color: var(--color-warning);
+  }
+
+  .status-danger {
+    background-color: color-mix(in srgb, var(--color-destructive) 10%, transparent);
+    color: var(--color-destructive);
+  }
+
+  .status-info {
+    background-color: color-mix(in srgb, var(--color-info) 12%, transparent);
+    color: var(--color-info);
+  }
+}
