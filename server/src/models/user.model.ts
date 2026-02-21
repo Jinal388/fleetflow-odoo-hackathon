@@ -6,7 +6,7 @@ export interface IUser extends Document {
   email: string;
   password: string;
   name: string;
-  role: typeof ROLES[keyof typeof ROLES];
+  role: string;
   isActive: boolean;
   isVerified: boolean;
   verificationOTP?: string;
@@ -52,11 +52,11 @@ userSchema.methods.generateOTP = function (): string {
 userSchema.methods.isOTPValid = function (otp: string, type: 'verification' | 'reset'): boolean {
   const otpField = type === 'verification' ? this.verificationOTP : this.resetOTP;
   const expiryField = type === 'verification' ? this.verificationOTPExpiry : this.resetOTPExpiry;
-  
+
   if (!otpField || !expiryField) return false;
   if (otpField !== otp) return false;
   if (new Date() > expiryField) return false;
-  
+
   return true;
 };
 
