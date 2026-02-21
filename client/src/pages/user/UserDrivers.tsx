@@ -1,69 +1,110 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Users, Search, Plus, Filter, X } from 'lucide-react';
-
-// --- Mock Data ---
-interface Driver {
-  id: string;
-  name: string;
-  licenseNumber: string;
-  licenseExpiry: string;
-  safetyScore: number;
-  status: 'On Duty' | 'Off Duty' | 'Suspended';
-}
-
-const initialDrivers: Driver[] = [
-  { id: '1', name: 'Alex Johnson', licenseNumber: 'DL-19283-X', licenseExpiry: '2026-12-01', safetyScore: 98, status: 'On Duty' },
-  { id: '2', name: 'Sarah Connor', licenseNumber: 'DL-88219-Y', licenseExpiry: '2026-02-23', safetyScore: 85, status: 'Off Duty' },
-  { id: '3', name: 'Michael Chen', licenseNumber: 'DL-33921-Z', licenseExpiry: '2024-05-12', safetyScore: 60, status: 'Suspended' },
-];
+import { Users, Search, Plus, Filter, X, Loader2 } from 'lucide-react';
+import driverService, { type Driver } from '../../services/driverService';
 
 // --- Form Validation Schema ---
 const driverSchema = z.object({
   name: z.string().min(2, 'Name is required'),
   licenseNumber: z.string().min(5, 'License number is required'),
   licenseExpiry: z.string().min(1, 'Expiry date is required'),
+  contactNumber: z.string().min(10, 'Contact number is required'),
 });
 
 type DriverFormValues = z.infer<typeof driverSchema>;
 
 const UserDrivers: React.FC = () => {
-  const [drivers, setDrivers] = useState<Driver[]>(initialDrivers);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<DriverFormValues>({
     resolver: zodResolver(driverSchema)
   });
 
-  const onSubmit = (data: DriverFormValues) => {
-    const isExpired = new Date(data.licenseExpiry) < new Date();
-    const newDriver: Driver = {
-      id: Math.random().toString(),
-      name: data.name,
-      licenseNumber: data.licenseNumber,
-      licenseExpiry: data.licenseExpiry,
-      safetyScore: 100, // Default for new drivers
-      status: isExpired ? 'Suspended' : 'Off Duty'
-    };
-    setDrivers([...drivers, newDriver]);
-    setIsModalOpen(false);
-    reset();
+  useEffect(() => {
+    fetchDrivers();
+  }, []);
+
+  const fetchDrivers = async () => {
+    try {
+      setLoading(true);
+      const data = await driverService.getAllDrivers();
+      setDrivers(data);
+    } catch (error) {
+      console.error('Failed to fetch drivers:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const toggleStatus = (id: string, currentStatus: string) => {
-    setDrivers(drivers.map(driver => {
-      if (driver.id === id) {
-        if (new Date(driver.licenseExpiry) < new Date()) {
-          return { ...driver, status: 'Suspended' as const };
-        }
-        const nextStatus = currentStatus === 'On Duty' ? 'Off Duty' : currentStatus === 'Off Duty' ? 'Suspended' : 'On Duty';
-        return { ...driver, status: nextStatus as 'On Duty' | 'Off Duty' | 'Suspended' };
-      }
-      return driver;
-    }));
+  const onSubmit = async (data: DriverFormValues) => {
+    try {
+      await driverService.createDriver({
+        name: data.name,
+        licenseNumber: data.licenseNumber,
+        licenseExpiry: new Date(data.licenseExpiry),
+        contactNumber: data.contactNumber,
+        status: 'available',
+      });
+      await fetchDrivers();
+      setIsModalOpen(false);
+      reset();
+    } catch (error) {
+      console.error('Failed to create driver:', error);
+    }
   };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this driver?')) return;
+    try {
+      await driverService.deleteDriver(id);
+      await fetchDrivers();
+    } catch (error) {
+      console.error('Failed to delete driver:', error);
+    }
+  };
+
+  const toggleStatus = async (driver: Driver) => {
+    try {
+      let newStatus: 'available' | 'on_trip' | 'unavailable';
+      if (driver.status === 'available') {
+        newStatus = 'unavailable';
+      } else if (driver.status === 'unavailable') {
+        newStatus = 'available';
+      } else {
+        newStatus = 'available';
+      }
+      
+      await driverService.updateDriver(driver._id, { status: newStatus });
+      await fetchDrivers();
+    } catch (error) {
+      console.error('Failed to update driver status:', error);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'available':
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">Available</span>;
+      case 'on_trip':
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-amber-50 text-amber-700 border-amber-200">On Trip</span>;
+      case 'unavailable':
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-rose-50 text-rose-700 border-rose-200">Unavailable</span>;
+      default:
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-gray-100 text-gray-700 border-gray-300">{status}</span>;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -106,7 +147,7 @@ const UserDrivers: React.FC = () => {
               <tr>
                 <th className="px-4 py-3 font-medium">Name</th>
                 <th className="px-4 py-3 font-medium">License / Expiry</th>
-                <th className="px-4 py-3 font-medium">Safety Score</th>
+                <th className="px-4 py-3 font-medium">Contact</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
@@ -115,39 +156,25 @@ const UserDrivers: React.FC = () => {
               {drivers.map((driver) => {
                 const isLicenseExpired = new Date(driver.licenseExpiry) < new Date();
                 return (
-                  <tr key={driver.id} className="hover:bg-muted/50 transition-colors">
+                  <tr key={driver._id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-4 py-3 font-medium">{driver.name}</td>
                     <td className="px-4 py-3">
                       <div className="font-mono">{driver.licenseNumber}</div>
                       <div className={`text-xs mt-0.5 ${isLicenseExpired ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
-                        Exp: {driver.licenseExpiry} {isLicenseExpired && '(Expired)'}
+                        Exp: {new Date(driver.licenseExpiry).toLocaleDateString()} {isLicenseExpired && '(Expired)'}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="font-medium">{driver.safetyScore}/100</div>
-                        <div className="w-16 h-1.5 rounded-full bg-secondary">
-                          <div className={`h-full rounded-full ${driver.safetyScore >= 90 ? 'bg-emerald-500' : driver.safetyScore >= 70 ? 'bg-amber-500' : 'bg-destructive'}`} style={{ width: `${driver.safetyScore}%` }}></div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border
-                        ${driver.status === 'On Duty' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                          driver.status === 'Suspended' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                            'bg-gray-100 text-gray-700 border-gray-300'}`}>
-                        {driver.status}
-                      </span>
-                    </td>
+                    <td className="px-4 py-3">{driver.contactNumber}</td>
+                    <td className="px-4 py-3">{getStatusBadge(driver.status)}</td>
                     <td className="px-4 py-3 text-right">
                       <button
-                        onClick={() => toggleStatus(driver.id, driver.status)}
+                        onClick={() => toggleStatus(driver)}
                         className="px-2 py-1 mr-2 text-xs font-semibold border rounded hover:bg-accent transition-colors"
                       >
                         Toggle Status
                       </button>
                       <button
-                        onClick={() => setDrivers(drivers.filter(item => item.id !== driver.id))}
+                        onClick={() => handleDelete(driver._id)}
                         className="p-1 text-destructive hover:bg-destructive/10 rounded transition-colors inline-block align-middle"
                       >
                         <X className="w-4 h-4" />
@@ -184,6 +211,11 @@ const UserDrivers: React.FC = () => {
                 <label className="block text-sm font-medium mb-1">License Expiry Date</label>
                 <input type="date" {...register('licenseExpiry')} className="w-full px-3 py-2 border rounded-md" />
                 {errors.licenseExpiry && <p className="text-xs text-destructive mt-1">{errors.licenseExpiry.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Contact Number</label>
+                <input {...register('contactNumber')} className="w-full px-3 py-2 border rounded-md" placeholder="+91 1234567890" />
+                {errors.contactNumber && <p className="text-xs text-destructive mt-1">{errors.contactNumber.message}</p>}
               </div>
               <div className="pt-4 flex gap-3">
                 <button type="submit" className="flex-1 bg-primary text-primary-foreground py-2 rounded-md font-medium">Add</button>

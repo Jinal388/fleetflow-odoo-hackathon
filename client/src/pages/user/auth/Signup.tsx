@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User as UserIcon, Phone, Shield, ArrowRight } from 'lucide-react';
+import authService from '../../../services/authService';
 
 const signupSchema = z.object({
     fullName: z.string().min(2, { message: 'Full name must be at least 2 characters' }),
@@ -23,6 +24,7 @@ type SignupFormValues = z.infer<typeof signupSchema>;
 
 const Signup: React.FC = () => {
     const navigate = useNavigate();
+    const [error, setError] = useState('');
     const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<SignupFormValues>({
         resolver: zodResolver(signupSchema),
         defaultValues: { role: 'MANAGER' }
@@ -30,22 +32,17 @@ const Signup: React.FC = () => {
 
     const onSubmit = async (data: SignupFormValues) => {
         try {
-            const response = await fetch('http://localhost:5000/api/fleetflow/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: data.email,
-                    password: data.password,
-                    name: data.fullName,
-                    role: data.role
-                })
+            setError('');
+            await authService.register({
+                email: data.email,
+                password: data.password,
+                name: data.fullName,
+                role: data.role.toLowerCase() as 'manager' | 'dispatcher'
             });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message || 'Registration failed');
-
             navigate('/auth/verify-otp', { state: { email: data.email } });
         } catch (error: any) {
-            alert(error.message);
+            const errorMessage = error.response?.data?.message || error.message || 'Registration failed';
+            setError(errorMessage);
         }
     };
 
@@ -92,6 +89,12 @@ const Signup: React.FC = () => {
                     </div>
 
                     <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-sm">
+                                {error}
+                            </div>
+                        )}
+                        
                         <div className="space-y-4">
 
                             {/* Full Name */}

@@ -8,10 +8,16 @@ import ResetPassword from '../pages/user/auth/ResetPassword';
 import UserRoutes from './UserRoutes';
 import AdminRoutes from './AdminRoutes';
 import Home from '../pages/home/Home';
+import DebugAPI from '../pages/DebugAPI';
+import TestAPI from '../pages/TestAPI';
 
 const AppRoutes: React.FC = () => {
     return (
         <Routes>
+            {/* Debug Routes */}
+            <Route path="/debug-api" element={<DebugAPI />} />
+            <Route path="/test-api" element={<TestAPI />} />
+            
             {/* Landing Page Route */}
             <Route path="/" element={<Home />} />
             <Route path="/home" element={<Navigate to="/" replace />} />

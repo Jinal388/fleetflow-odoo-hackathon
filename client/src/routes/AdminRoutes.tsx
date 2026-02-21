@@ -8,6 +8,7 @@ import AdminMaintenance from '../pages/admin/AdminMaintenance';
 import AdminExpenses from '../pages/admin/AdminExpenses';
 import AdminDrivers from '../pages/admin/AdminDrivers';
 import AdminAnalytics from '../pages/admin/AdminAnalytics';
+import AdminUsers from '../pages/admin/AdminUsers';
 
 const AdminRoutes: React.FC = () => {
     return (
@@ -21,6 +22,7 @@ const AdminRoutes: React.FC = () => {
                 <Route path="/expenses" element={<AdminExpenses />} />
                 <Route path="/drivers" element={<AdminDrivers />} />
                 <Route path="/analytics" element={<AdminAnalytics />} />
+                <Route path="/users" element={<AdminUsers />} />
             </Route>
         </Routes>
     );

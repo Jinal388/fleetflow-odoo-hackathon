@@ -1,58 +1,106 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Receipt, Search, Plus, Filter, X, Calculator } from 'lucide-react';
-import { useFleet } from '../../context/FleetContext';
+import { Receipt, Search, Plus, Filter, X, Calculator, Loader2 } from 'lucide-react';
+import fuelService, { type FuelEntry } from '../../services/fuelService';
+import vehicleService, { type Vehicle } from '../../services/vehicleService';
+import driverService, { type Driver } from '../../services/driverService';
+import maintenanceService, { type Maintenance } from '../../services/maintenanceService';
 
 // --- Form Validation Schema ---
 const expenseSchema = z.object({
-  tripId: z.string().min(1, 'Trip ID is required'),
-  fuelCost: z.string().min(1, 'Fuel Cost is required'),
-  miscCost: z.string().min(0, 'Misc Cost is required'),
+  vehicle: z.string().min(1, 'Vehicle is required'),
+  driver: z.string().min(1, 'Driver is required'),
+  quantity: z.number().min(1, 'Fuel quantity is required'),
+  cost: z.number().min(1, 'Fuel cost is required'),
+  mileage: z.number().min(0, 'Mileage is required'),
+  date: z.string().min(1, 'Date is required'),
 });
 
 type ExpenseFormValues = z.infer<typeof expenseSchema>;
 
 const UserExpenses: React.FC = () => {
-  const { expenses, addExpense, deleteExpense, trips, vehicles, drivers, maintenanceLogs } = useFleet();
+  const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [maintenanceLogs, setMaintenanceLogs] = useState<Maintenance[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedVehicleForCost, setSelectedVehicleForCost] = useState<string>('');
 
-  const { register, handleSubmit, reset, setError, formState: { errors } } = useForm<ExpenseFormValues>({
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<ExpenseFormValues>({
     resolver: zodResolver(expenseSchema)
   });
 
-  const onSubmit = (data: ExpenseFormValues) => {
-    const trip = trips.find(t => t.id === data.tripId);
-    if (!trip) {
-      setError('tripId', { type: 'manual', message: 'Trip ID not found. Enter an active Trip ID.' });
-      return;
-    }
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-    addExpense({
-      id: "EXP-" + Math.floor(Math.random() * 10000),
-      tripId: trip.id,
-      vehicleId: trip.vehicleId,
-      driverId: trip.driverId,
-      distance: 'Auto-Calculated',
-      fuelExpense: parseInt(data.fuelCost),
-      miscExpense: parseInt(data.miscCost),
-      status: 'Done'
-    });
-    setIsModalOpen(false);
-    reset();
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [fuelData, vehiclesData, driversData, maintenanceData] = await Promise.all([
+        fuelService.getAllFuelEntries(),
+        vehicleService.getAllVehicles(),
+        driverService.getAllDrivers(),
+        maintenanceService.getAllMaintenance(),
+      ]);
+      setFuelEntries(fuelData);
+      setVehicles(vehiclesData);
+      setDrivers(driversData);
+      setMaintenanceLogs(maintenanceData);
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSubmit = async (data: ExpenseFormValues) => {
+    try {
+      await fuelService.createFuelEntry({
+        vehicle: data.vehicle,
+        driver: data.driver,
+        type: 'refuel',
+        quantity: data.quantity,
+        cost: data.cost,
+        pricePerUnit: data.cost / data.quantity,
+        mileage: data.mileage,
+        date: new Date(data.date),
+        createdBy: localStorage.getItem('userId') || '',
+      });
+      await fetchData();
+      setIsModalOpen(false);
+      reset();
+    } catch (error) {
+      console.error('Failed to create fuel entry:', error);
+    }
   };
 
   const getDriverName = (driverId: string) => {
-    return drivers.find(d => d.id === driverId)?.name || driverId;
+    const driver = drivers.find(d => d._id === driverId);
+    return driver?.name || driverId;
+  };
+
+  const getVehicleName = (vehicleId: string) => {
+    const vehicle = vehicles.find(v => v._id === vehicleId);
+    return vehicle ? `${vehicle.registrationNumber}` : vehicleId;
   };
 
   const calculateTotalOpCost = (vId: string) => {
-    const fuelCost = expenses.filter(e => e.vehicleId === vId).reduce((acc, curr) => acc + curr.fuelExpense, 0);
-    const maintCost = maintenanceLogs.filter(m => m.vehicleId === vId).reduce((acc, curr) => acc + curr.cost, 0);
+    const fuelCost = fuelEntries.filter(e => e.vehicle === vId).reduce((acc, curr) => acc + curr.cost, 0);
+    const maintCost = maintenanceLogs.filter(m => m.vehicle === vId).reduce((acc, curr) => acc + (curr.cost || 0), 0);
     return fuelCost + maintCost;
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -81,10 +129,10 @@ const UserExpenses: React.FC = () => {
             onChange={(e) => setSelectedVehicleForCost(e.target.value)}
           >
             <option value="">Select a vehicle...</option>
-            {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} ({v.model})</option>)}
+            {vehicles.map(v => <option key={v._id} value={v._id}>{v.registrationNumber} ({v.model})</option>)}
           </select>
           <div className="bg-muted px-4 py-2 rounded-lg font-mono font-semibold text-lg border border-border min-w-[150px] text-center">
-            ₹ {selectedVehicleForCost ? calculateTotalOpCost(selectedVehicleForCost).toLocaleString() : '0'}
+            $ {selectedVehicleForCost ? calculateTotalOpCost(selectedVehicleForCost).toLocaleString() : '0'}
           </div>
         </div>
       </div>
@@ -95,7 +143,7 @@ const UserExpenses: React.FC = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search by Trip ID..."
+            placeholder="Search by Vehicle..."
             className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm"
           />
         </div>
@@ -107,7 +155,7 @@ const UserExpenses: React.FC = () => {
             onClick={() => setIsModalOpen(true)}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2"
           >
-            <Plus className="w-4 h-4" /> Add an Expense
+            <Plus className="w-4 h-4" /> Add Fuel Entry
           </button>
         </div>
       </div>
@@ -118,46 +166,30 @@ const UserExpenses: React.FC = () => {
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b border-border">
               <tr>
-                <th className="px-4 py-3 font-medium">Trip ID</th>
+                <th className="px-4 py-3 font-medium">Vehicle</th>
                 <th className="px-4 py-3 font-medium">Driver</th>
-                <th className="px-4 py-3 font-medium">Distance</th>
-                <th className="px-4 py-3 font-medium">Fuel Exp (₹)</th>
-                <th className="px-4 py-3 font-medium">Misc Exp (₹)</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
+                <th className="px-4 py-3 font-medium">Quantity (L)</th>
+                <th className="px-4 py-3 font-medium">Cost ($)</th>
+                <th className="px-4 py-3 font-medium">Mileage</th>
+                <th className="px-4 py-3 font-medium">Date</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {expenses.map((expense) => (
-                <tr key={expense.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">#{expense.tripId}</td>
-                  <td className="px-4 py-3">{getDriverName(expense.driverId)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{expense.distance}</td>
-                  <td className="px-4 py-3 font-mono">{expense.fuelExpense}</td>
-                  <td className="px-4 py-3 font-mono text-muted-foreground">{expense.miscExpense}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border
-                      ${expense.status === 'Done' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                        expense.status === 'Pending Reimbursement' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                          'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                      {expense.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => deleteExpense(expense.id)}
-                      className="p-1 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </td>
+              {fuelEntries.map((entry) => (
+                <tr key={entry._id} className="hover:bg-muted/50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-foreground">{getVehicleName(entry.vehicle)}</td>
+                  <td className="px-4 py-3">{getDriverName(entry.driver)}</td>
+                  <td className="px-4 py-3 font-mono">{entry.quantity}</td>
+                  <td className="px-4 py-3 font-mono">{entry.cost}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{entry.mileage}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{new Date(entry.date).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {expenses.length === 0 && (
+          {fuelEntries.length === 0 && (
             <div className="p-8 text-center text-muted-foreground">
-              No expenses recorded.
+              No fuel entries recorded.
             </div>
           )}
         </div>
@@ -168,32 +200,56 @@ const UserExpenses: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
           <div className="bg-card w-full max-w-sm rounded-xl border border-border shadow-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-muted/30">
-              <h3 className="font-semibold text-lg flex items-center gap-2"><Receipt className="w-5 h-5 text-primary" /> New Expense</h3>
+              <h3 className="font-semibold text-lg flex items-center gap-2"><Receipt className="w-5 h-5 text-primary" /> New Fuel Entry</h3>
               <button onClick={() => { setIsModalOpen(false); reset(); }} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Select Active Trip</label>
+                <label className="block text-sm font-medium mb-1">Vehicle</label>
                 <select
-                  {...register('tripId')}
+                  {...register('vehicle')}
                   className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm"
                 >
-                  <option value="">Select a trip...</option>
-                  {trips.filter(t => t.status !== 'Delivered').map(t => <option key={t.id} value={t.id}>{t.id} ({t.origin} to {t.destination})</option>)}
+                  <option value="">Select a vehicle...</option>
+                  {vehicles.map(v => <option key={v._id} value={v._id}>{v.registrationNumber} - {v.model}</option>)}
                 </select>
-                {errors.tripId && <p className="text-xs text-destructive mt-1">{errors.tripId.message}</p>}
+                {errors.vehicle && <p className="text-xs text-destructive mt-1">{errors.vehicle.message}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Fuel Cost (₹)</label>
-                <input type="number" {...register('fuelCost')} className="w-full px-3 py-2 border rounded-md text-sm" placeholder="e.g. 19000" />
-                {errors.fuelCost && <p className="text-xs text-destructive mt-1">{errors.fuelCost.message}</p>}
+                <label className="block text-sm font-medium mb-1">Driver</label>
+                <select
+                  {...register('driver')}
+                  className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm"
+                >
+                  <option value="">Select a driver...</option>
+                  {drivers.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                </select>
+                {errors.driver && <p className="text-xs text-destructive mt-1">{errors.driver.message}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Misc Expense (₹)</label>
-                <input type="number" {...register('miscCost')} className="w-full px-3 py-2 border rounded-md text-sm" placeholder="e.g. 3000" />
-                {errors.miscCost && <p className="text-xs text-destructive mt-1">{errors.miscCost.message}</p>}
+                <label className="block text-sm font-medium mb-1">Fuel Quantity (Liters)</label>
+                <input type="number" {...register('quantity', { valueAsNumber: true })} className="w-full px-3 py-2 border rounded-md text-sm" placeholder="e.g. 50" />
+                {errors.quantity && <p className="text-xs text-destructive mt-1">{errors.quantity.message}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Fuel Cost ($)</label>
+                <input type="number" {...register('cost', { valueAsNumber: true })} className="w-full px-3 py-2 border rounded-md text-sm" placeholder="e.g. 100" />
+                {errors.cost && <p className="text-xs text-destructive mt-1">{errors.cost.message}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Mileage (km)</label>
+                <input type="number" {...register('mileage', { valueAsNumber: true })} className="w-full px-3 py-2 border rounded-md text-sm" placeholder="e.g. 50000" />
+                {errors.mileage && <p className="text-xs text-destructive mt-1">{errors.mileage.message}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Date</label>
+                <input type="date" {...register('date')} className="w-full px-3 py-2 border rounded-md text-sm" />
+                {errors.date && <p className="text-xs text-destructive mt-1">{errors.date.message}</p>}
               </div>
 
               <div className="pt-4 flex gap-3">

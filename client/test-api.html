@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>FleetFlow API Test</h1>
+    <div id="result"></div>
+    
+    <script>
+        // Test the API endpoint
+        const API_URL = 'http://localhost:5000/api/fleetflow';
+        
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                // Test health endpoint
+                resultDiv.innerHTML += '<h2>Testing Health Endpoint...</h2>';
+                const healthResponse = await fetch('http://localhost:5000/health');
+                const healthData = await healthResponse.json();
+                resultDiv.innerHTML += `<p>Health: ${JSON.stringify(healthData)}</p>`;
+                
+                // Test login
+                resultDiv.innerHTML += '<h2>Testing Login...</h2>';
+                const loginResponse = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@fleetflow.com',
+                        password: 'Admin@123'
+                    })
+                });
+                
+                const loginData = await loginResponse.json();
+                resultDiv.innerHTML += `<p>Login Status: ${loginResponse.status}</p>`;
+                resultDiv.innerHTML += `<p>Login Response: ${JSON.stringify(loginData, null, 2)}</p>`;
+                
+                if (loginData.success && loginData.data.token) {
+                    const token = loginData.data.token;
+                    
+                    // Test getting vehicles
+                    resultDiv.innerHTML += '<h2>Testing Get Vehicles...</h2>';
+                    const vehiclesResponse = await fetch(`${API_URL}/vehicles`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const vehiclesData = await vehiclesResponse.json();
+                    resultDiv.innerHTML += `<p>Vehicles Status: ${vehiclesResponse.status}</p>`;
+                    resultDiv.innerHTML += `<p>Vehicles: ${JSON.stringify(vehiclesData, null, 2)}</p>`;
+                }
+                
+            } catch (error) {
+                resultDiv.innerHTML += `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+        
+        testAPI();
+    </script>
+</body>
+</html>

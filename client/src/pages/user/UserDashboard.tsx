@@ -1,18 +1,45 @@
-import React from 'react';
-import { Truck, Wrench, Package, Route, Activity, MoreVertical } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Truck, Wrench, Package, Route, Activity, MoreVertical, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useFleet } from '../../context/FleetContext';
+import vehicleService, { type Vehicle } from '../../services/vehicleService';
+import tripService, { type Trip } from '../../services/tripService';
+import maintenanceService, { type Maintenance } from '../../services/maintenanceService';
 
 const UserDashboard: React.FC = () => {
-    const { vehicles, trips, maintenanceLogs } = useFleet();
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+    const [trips, setTrips] = useState<Trip[]>([]);
+    const [maintenanceLogs, setMaintenanceLogs] = useState<Maintenance[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    // Calculate real KPIs from Context data
-    const activeFleetCount = vehicles.filter(v => v.status === 'On Trip').length;
-    const maintenanceAlertsCount = maintenanceLogs.filter(m => m.status !== 'Completed').length;
-    const activeTripsCount = trips.filter(t => t.status === 'On way' || t.status === 'Pending').length;
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
+
+    const fetchDashboardData = async () => {
+        try {
+            setLoading(true);
+            const [vehiclesData, tripsData, maintenanceData] = await Promise.all([
+                vehicleService.getAllVehicles(),
+                tripService.getAllTrips(),
+                maintenanceService.getAllMaintenance(),
+            ]);
+            setVehicles(vehiclesData);
+            setTrips(tripsData);
+            setMaintenanceLogs(maintenanceData);
+        } catch (error) {
+            console.error('Failed to fetch dashboard data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Calculate real KPIs from API data
+    const activeFleetCount = vehicles.filter(v => v.status === 'on_trip').length;
+    const maintenanceAlertsCount = maintenanceLogs.filter(m => m.status !== 'completed').length;
+    const activeTripsCount = trips.filter(t => t.status === 'dispatched').length;
 
     // Utilization: Active vehicles / Total serviceable vehicles
-    const serviceableVehicles = vehicles.filter(v => v.status !== 'Out of Service').length;
+    const serviceableVehicles = vehicles.filter(v => v.status !== 'out_of_service').length;
     const utilizationRate = serviceableVehicles > 0 ? Math.round((activeFleetCount / serviceableVehicles) * 100) : 0;
 
     const kpis = [
@@ -24,12 +51,20 @@ const UserDashboard: React.FC = () => {
 
     const getStatusBadge = (status: string) => {
         switch (status) {
-            case 'On way': return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200">On Trip</span>;
-            case 'Delivered': return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-blue-50 text-blue-700 border-blue-200">Delivered</span>;
-            case 'Pending': return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-amber-50 text-amber-700 border-amber-200">Pending</span>;
+            case 'dispatched': return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200">Dispatched</span>;
+            case 'completed': return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-blue-50 text-blue-700 border-blue-200">Completed</span>;
+            case 'draft': return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-amber-50 text-amber-700 border-amber-200">Draft</span>;
             default: return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-gray-50 text-gray-700 border-gray-200">{status}</span>;
         }
     };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -99,18 +134,15 @@ const UserDashboard: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {trips.slice(0, 5).map((trip) => {
-                                    const vName = vehicles.find(v => v.id === trip.vehicleId)?.model || trip.vehicleId;
-                                    return (
-                                        <tr key={trip.id} className="hover:bg-muted/30 transition-colors border-t border-border/50">
-                                            <td className="px-5 py-4 font-medium text-foreground">{trip.id}</td>
-                                            <td className="px-5 py-4">{vName}</td>
-                                            <td className="px-5 py-4">{trip.origin}</td>
-                                            <td className="px-5 py-4 text-muted-foreground">{trip.destination}</td>
-                                            <td className="px-5 py-4 text-right">{getStatusBadge(trip.status)}</td>
-                                        </tr>
-                                    );
-                                })}
+                                {trips.slice(0, 5).map((trip) => (
+                                    <tr key={trip._id} className="hover:bg-muted/30 transition-colors border-t border-border/50">
+                                        <td className="px-5 py-4 font-medium text-foreground">{trip._id}</td>
+                                        <td className="px-5 py-4">{trip.vehicle?.registrationNumber || 'N/A'}</td>
+                                        <td className="px-5 py-4">{trip.origin}</td>
+                                        <td className="px-5 py-4 text-muted-foreground">{trip.destination}</td>
+                                        <td className="px-5 py-4 text-right">{getStatusBadge(trip.status)}</td>
+                                    </tr>
+                                ))}
                                 {trips.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-muted-foreground">No active trips</td></tr>}
                             </tbody>
                         </table>
@@ -161,13 +193,15 @@ const UserDashboard: React.FC = () => {
                     <div className="mt-8 pt-6 border-t border-border">
                         <h3 className="text-sm font-medium mb-4">Recent Alerts</h3>
                         <div className="space-y-3">
-                            <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm">
-                                <Wrench className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                                <div>
-                                    <p className="font-medium text-amber-600 dark:text-amber-400">Scheduled Service Due</p>
-                                    <p className="text-amber-600/80 dark:text-amber-400/80 text-xs mt-1">Truck-08 mileage exceeded 50,000km</p>
+                            {maintenanceAlertsCount > 0 && (
+                                <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm">
+                                    <Wrench className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <p className="font-medium text-amber-600 dark:text-amber-400">Maintenance Required</p>
+                                        <p className="text-amber-600/80 dark:text-amber-400/80 text-xs mt-1">{maintenanceAlertsCount} vehicle(s) need attention</p>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
                 </motion.div>

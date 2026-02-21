@@ -1,44 +1,110 @@
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { Wrench, Search, Plus, Filter, ArrowUpDown, X, Settings2 } from 'lucide-react';
-import { useFleet } from '../../context/FleetContext';
-
-// --- Form Validation Schema ---
-const maintenanceSchema = z.object({
-  vehicle: z.string().min(1, 'Vehicle is required'),
-  issue: z.string().min(5, 'Description of issue is required (min 5 chars)'),
-  date: z.string().min(1, 'Date is required'),
-});
-
-type MaintenanceFormValues = z.infer<typeof maintenanceSchema>;
+import React, { useState, useEffect } from 'react';
+import { Wrench, Search, Plus, X, Loader2, CheckCircle } from 'lucide-react';
+import maintenanceService, { type Maintenance } from '../../services/maintenanceService';
+import vehicleService, { type Vehicle } from '../../services/vehicleService';
+import authService from '../../services/authService';
 
 const AdminMaintenance: React.FC = () => {
-  const { maintenanceLogs: logs, addMaintenanceLog, deleteMaintenanceLog, vehicles } = useFleet();
+  const [maintenanceLogs, setMaintenanceLogs] = useState<Maintenance[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<MaintenanceFormValues>({
-    resolver: zodResolver(maintenanceSchema)
+  
+  const currentUser = authService.getCurrentUser();
+  const isAdmin = currentUser?.role === 'admin';
+  const isManager = currentUser?.role === 'manager';
+  const canCreate = isAdmin || isManager;
+  
+  const [formData, setFormData] = useState({
+    vehicle: '',
+    type: 'routine' as 'routine' | 'repair' | 'inspection' | 'emergency',
+    description: '',
+    scheduledDate: '',
+    mileageAtService: 0,
   });
 
-  const onSubmit = (data: MaintenanceFormValues) => {
-    addMaintenanceLog({
-      id: Math.floor(Math.random() * 1000).toString(),
-      vehicleId: data.vehicle,
-      issue: data.issue,
-      date: new Date(data.date).toLocaleDateString('en-GB'),
-      cost: 0,
-      status: 'New'
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [maintenanceData, vehiclesData] = await Promise.all([
+        maintenanceService.getAllMaintenance(),
+        vehicleService.getAllVehicles(),
+      ]);
+      setMaintenanceLogs(maintenanceData);
+      setVehicles(vehiclesData);
+      setError('');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to fetch data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await maintenanceService.createMaintenance({
+        ...formData,
+        scheduledDate: new Date(formData.scheduledDate),
+      });
+      setIsModalOpen(false);
+      resetForm();
+      fetchData();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to create maintenance');
+    }
+  };
+
+  const handleComplete = async (id: string) => {
+    const cost = prompt('Enter maintenance cost:');
+    if (!cost) return;
+    
+    try {
+      await maintenanceService.completeMaintenance(id, parseFloat(cost));
+      fetchData();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to complete maintenance');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      vehicle: '',
+      type: 'routine',
+      description: '',
+      scheduledDate: '',
+      mileageAtService: 0,
     });
-    setIsModalOpen(false);
-    reset();
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'in_progress':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 'scheduled':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'cancelled':
+        return 'bg-rose-50 text-rose-700 border-rose-200';
+      default:
+        return 'bg-gray-100 text-gray-700 border-gray-300';
+    }
+  };
+
+  const getVehicleName = (vehicleId: string) => {
+    const vehicle = vehicles.find(v => v._id === vehicleId);
+    return vehicle ? `${vehicle.name} (${vehicle.licensePlate})` : vehicleId;
   };
 
   return (
     <div className="p-6">
-
-      {/* Header section matching Dashboard style */}
+      {/* Header */}
       <div className="flex items-center gap-3 mb-8 bg-card p-4 rounded-xl border border-border shadow-sm">
         <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
           <Wrench className="text-destructive w-5 h-5" />
@@ -49,103 +115,102 @@ const AdminMaintenance: React.FC = () => {
         </div>
       </div>
 
-      {/* Action Bar (Search & Filters) */}
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
+          {error}
+        </div>
+      )}
+
+      {/* Action Bar */}
       <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
         <div className="flex-1 max-w-md relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search by Log ID or Vehicle..."
+            placeholder="Search by vehicle..."
             className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <button className="px-3 py-2 bg-card border border-border rounded-lg text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors shadow-sm flex items-center gap-2">
-            <Filter className="w-4 h-4" />
-            Group by
-          </button>
-          <button className="px-3 py-2 bg-card border border-border rounded-lg text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors shadow-sm flex items-center gap-2">
-            <Settings2 className="w-4 h-4" />
-            Filter
-          </button>
-          <button className="px-3 py-2 bg-card border border-border rounded-lg text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors shadow-sm flex items-center gap-2">
-            <ArrowUpDown className="w-4 h-4" />
-            Sort by
-          </button>
+        {canCreate && (
           <button
             onClick={() => setIsModalOpen(true)}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Create New Service
+            Schedule Maintenance
           </button>
-        </div>
+        )}
       </div>
 
-      {/* Maintenance Data Table */}
+      {/* Maintenance Table */}
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left whitespace-nowrap">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b border-border">
-              <tr>
-                <th className="px-4 py-3 font-medium cursor-pointer hover:bg-muted transition-colors">Log ID</th>
-                <th className="px-4 py-3 font-medium cursor-pointer hover:bg-muted transition-colors">Vehicle</th>
-                <th className="px-4 py-3 font-medium cursor-pointer hover:bg-muted transition-colors">Issue/Service</th>
-                <th className="px-4 py-3 font-medium cursor-pointer hover:bg-muted transition-colors">Date</th>
-                <th className="px-4 py-3 font-medium cursor-pointer hover:bg-muted transition-colors">Cost (₹)</th>
-                <th className="px-4 py-3 font-medium cursor-pointer hover:bg-muted transition-colors">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-4 py-3 text-muted-foreground font-mono">#{log.id}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">{vehicles.find(v => v.id === log.vehicleId)?.model || log.vehicleId}</td>
-                  <td className="px-4 py-3">{log.issue}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{log.date}</td>
-                  <td className="px-4 py-3 font-mono">{log.cost}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border
-                      ${log.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                        log.status === 'In Progress' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                          'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                      {log.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => deleteMaintenanceLog(log.id)}
-                      className="p-1 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </td>
+        {loading ? (
+          <div className="p-8 text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+            <p className="mt-2 text-muted-foreground">Loading maintenance logs...</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b border-border">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Vehicle</th>
+                  <th className="px-4 py-3 font-medium">Type</th>
+                  <th className="px-4 py-3 font-medium">Description</th>
+                  <th className="px-4 py-3 font-medium">Scheduled Date</th>
+                  <th className="px-4 py-3 font-medium">Cost</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {logs.length === 0 && (
-            <div className="p-8 text-center text-muted-foreground">
-              No service logs found.
-            </div>
-          )}
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {maintenanceLogs.map((log) => (
+                  <tr key={log._id} className="hover:bg-muted/50 transition-colors">
+                    <td className="px-4 py-3 font-medium text-foreground">{getVehicleName(log.vehicle)}</td>
+                    <td className="px-4 py-3 capitalize">{log.type}</td>
+                    <td className="px-4 py-3">{log.description}</td>
+                    <td className="px-4 py-3">{new Date(log.scheduledDate).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 font-mono">${log.cost || 0}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(log.status)}`}>
+                        {log.status.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {log.status === 'in_progress' && canCreate && (
+                        <button
+                          onClick={() => handleComplete(log._id!)}
+                          className="p-1 text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                          title="Complete Maintenance"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {maintenanceLogs.length === 0 && (
+              <div className="p-8 text-center text-muted-foreground">
+                No maintenance logs found.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* New Service Modal */}
+      {/* New Maintenance Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-          <div className="bg-card w-full max-w-sm rounded-xl border border-border shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-muted/30">
-              <h3 className="font-semibold text-lg flex items-center gap-2">
-                <Wrench className="w-5 h-5 text-destructive" />
-                New Service Log
-              </h3>
+          <div className="bg-card w-full max-w-md rounded-xl border border-border shadow-xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-border flex justify-between items-center">
+              <h3 className="font-semibold text-lg">Schedule Maintenance</h3>
               <button
                 onClick={() => {
                   setIsModalOpen(false);
-                  reset();
+                  resetForm();
                 }}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
@@ -153,65 +218,94 @@ const AdminMaintenance: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
-
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1 text-foreground">Vehicle Name</label>
+                <label className="block text-sm font-medium mb-1">Vehicle *</label>
                 <select
-                  {...register('vehicle')}
-                  className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm appearance-none bg-no-repeat"
-                  style={{ backgroundImage: 'url("data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e")', backgroundPosition: 'right 0.5rem center', backgroundSize: '1.5em 1.5em' }}
-                >
-                  <option value="">Select vehicle in shop...</option>
-                  {vehicles.map(v => <option key={v.id} value={v.id}>{v.plate} - {v.model}</option>)}
-                </select>
-                {errors.vehicle && <p className="text-xs text-destructive mt-1">{errors.vehicle.message}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1 text-foreground">Issue / Service</label>
-                <input
-                  type="text"
-                  {...register('issue')}
+                  value={formData.vehicle}
+                  onChange={(e) => setFormData({ ...formData, vehicle: e.target.value })}
                   className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
-                  placeholder="e.g. Engine tune-up, Oil Change"
-                />
-                {errors.issue && <p className="text-xs text-destructive mt-1">{errors.issue.message}</p>}
+                  required
+                >
+                  <option value="">Select Vehicle</option>
+                  {vehicles.map((v) => (
+                    <option key={v._id} value={v._id}>
+                      {v.name} ({v.licensePlate})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1 text-foreground">Date</label>
+                <label className="block text-sm font-medium mb-1">Type *</label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                  className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
+                  required
+                >
+                  <option value="routine">Routine</option>
+                  <option value="repair">Repair</option>
+                  <option value="inspection">Inspection</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Description *</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
+                  rows={3}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Scheduled Date *</label>
                 <input
                   type="date"
-                  {...register('date')}
+                  value={formData.scheduledDate}
+                  onChange={(e) => setFormData({ ...formData, scheduledDate: e.target.value })}
                   className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
+                  required
                 />
-                {errors.date && <p className="text-xs text-destructive mt-1">{errors.date.message}</p>}
               </div>
 
-              <div className="pt-4 flex items-center gap-3">
-                <button
-                  type="submit"
-                  className="w-1/2 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 border border-primary rounded-md transition-colors"
-                >
-                  Create
-                </button>
+              <div>
+                <label className="block text-sm font-medium mb-1">Mileage at Service *</label>
+                <input
+                  type="number"
+                  value={formData.mileageAtService}
+                  onChange={(e) => setFormData({ ...formData, mileageAtService: parseInt(e.target.value) })}
+                  className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
+                  required
+                />
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setIsModalOpen(false);
-                    reset();
+                    resetForm();
                   }}
-                  className="w-1/2 py-2 text-sm font-medium border border-destructive text-destructive bg-background hover:bg-destructive/10 rounded-md transition-colors"
+                  className="px-4 py-2 text-sm font-medium border border-input bg-background hover:bg-accent rounded-md transition-colors"
                 >
                   Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                >
+                  Schedule
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 };

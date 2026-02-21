@@ -9,11 +9,17 @@ const vehicle_routes_1 = __importDefault(require("../modules/vehicles/vehicle.ro
 const driver_routes_1 = __importDefault(require("../modules/drivers/driver.routes"));
 const dispatch_routes_1 = __importDefault(require("../modules/dispatches/dispatch.routes"));
 const maintenance_routes_1 = __importDefault(require("../modules/maintenance/maintenance.routes"));
+const fuel_routes_1 = __importDefault(require("../modules/fuel/fuel.routes"));
+const trip_routes_1 = __importDefault(require("../modules/trips/trip.routes"));
+const analytics_routes_1 = __importDefault(require("../modules/analytics/analytics.routes"));
 const router = (0, express_1.Router)();
 router.use('/auth', auth_routes_1.default);
 router.use('/vehicles', vehicle_routes_1.default);
 router.use('/drivers', driver_routes_1.default);
 router.use('/dispatches', dispatch_routes_1.default);
 router.use('/maintenance', maintenance_routes_1.default);
+router.use('/fuel', fuel_routes_1.default);
+router.use('/trips', trip_routes_1.default);
+router.use('/analytics', analytics_routes_1.default);
 exports.default = router;
 //# sourceMappingURL=index.routes.js.map

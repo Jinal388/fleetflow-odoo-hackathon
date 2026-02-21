@@ -1,60 +1,106 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Car, Search, Plus, Filter, ArrowUpDown, X, Settings2 } from 'lucide-react';
-
-// --- Mock Data ---
-interface Vehicle {
-  id: string;
-  plate: string;
-  model: string;
-  type: string;
-  capacity: string;
-  odometer: string;
-  status: 'Idle' | 'On Trip' | 'In Shop' | 'Out of Service';
-}
-
-const initialVehicles: Vehicle[] = [
-  { id: '1', plate: 'MH 00', model: '2017 Mini', type: 'Van', capacity: '5 tonn', odometer: '29000', status: 'Idle' },
-  { id: '2', plate: 'KA 12', model: 'Ford Transit', type: 'Van', capacity: '3 tonn', odometer: '45000', status: 'On Trip' },
-  { id: '3', plate: 'DL 9C', model: 'Volvo FH', type: 'Truck', capacity: '20 tonn', odometer: '120500', status: 'In Shop' },
-];
+import { Car, Search, Plus, Filter, ArrowUpDown, X, Settings2, Loader2 } from 'lucide-react';
+import vehicleService, { type Vehicle } from '../../services/vehicleService';
 
 // --- Form Validation Schema ---
 const vehicleSchema = z.object({
-  plate: z.string().min(1, 'License Plate is required'),
-  capacity: z.string().min(1, 'Max Payload is required'),
-  odometer: z.string().min(1, 'Initial Odometer is required'),
-  type: z.string().min(1, 'Type is required'),
+  registrationNumber: z.string().min(1, 'Registration Number is required'),
+  maxPayload: z.number().min(1, 'Max Payload is required'),
+  currentOdometer: z.number().min(0, 'Current Odometer is required'),
+  vehicleType: z.string().min(1, 'Type is required'),
   model: z.string().min(1, 'Model is required'),
 });
 
 type VehicleFormValues = z.infer<typeof vehicleSchema>;
 
 const UserVehicles: React.FC = () => {
-  const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<VehicleFormValues>({
     resolver: zodResolver(vehicleSchema)
   });
 
-  const onSubmit = (data: VehicleFormValues) => {
-    // Add new mocked vehicle
-    const newVehicle: Vehicle = {
-      id: Math.random().toString(),
-      plate: data.plate,
-      model: data.model,
-      type: data.type,
-      capacity: data.capacity,
-      odometer: data.odometer.toString(),
-      status: 'Idle'
-    };
-    setVehicles([...vehicles, newVehicle]);
-    setIsModalOpen(false);
-    reset();
+  useEffect(() => {
+    fetchVehicles();
+  }, []);
+
+  const fetchVehicles = async () => {
+    try {
+      setLoading(true);
+      const data = await vehicleService.getAllVehicles();
+      setVehicles(data);
+    } catch (error) {
+      console.error('Failed to fetch vehicles:', error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const onSubmit = async (data: VehicleFormValues) => {
+    try {
+      await vehicleService.createVehicle({
+        registrationNumber: data.registrationNumber,
+        vehicleType: data.vehicleType,
+        model: data.model,
+        maxPayload: data.maxPayload,
+        currentOdometer: data.currentOdometer,
+        status: 'idle',
+      });
+      await fetchVehicles();
+      setIsModalOpen(false);
+      reset();
+    } catch (error) {
+      console.error('Failed to create vehicle:', error);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this vehicle?')) return;
+    try {
+      await vehicleService.deleteVehicle(id);
+      await fetchVehicles();
+    } catch (error) {
+      console.error('Failed to delete vehicle:', error);
+    }
+  };
+
+  const handleStatusToggle = async (vehicle: Vehicle) => {
+    try {
+      const newStatus = vehicle.status === 'out_of_service' ? 'idle' : 'out_of_service';
+      await vehicleService.updateVehicle(vehicle._id, { status: newStatus });
+      await fetchVehicles();
+    } catch (error) {
+      console.error('Failed to update vehicle status:', error);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'idle':
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">Idle</span>;
+      case 'on_trip':
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-amber-50 text-amber-700 border-amber-200">On Trip</span>;
+      case 'in_maintenance':
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-rose-50 text-rose-700 border-rose-200">In Maintenance</span>;
+      case 'out_of_service':
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-gray-100 text-gray-700 border-gray-300">Out of Service</span>;
+      default:
+        return <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-gray-100 text-gray-700 border-gray-300">{status}</span>;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -121,35 +167,24 @@ const UserVehicles: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-border">
               {vehicles.map((v, index) => (
-                <tr key={v.id} className="hover:bg-muted/50 transition-colors">
+                <tr key={v._id} className="hover:bg-muted/50 transition-colors">
                   <td className="px-4 py-3 text-muted-foreground">{index + 1}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">{v.plate}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">{v.registrationNumber}</td>
                   <td className="px-4 py-3">{v.model}</td>
-                  <td className="px-4 py-3">{v.type}</td>
-                  <td className="px-4 py-3">{v.capacity}</td>
-                  <td className="px-4 py-3 font-mono">{v.odometer}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border
-                      ${v.status === 'Idle' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                        v.status === 'On Trip' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                          v.status === 'In Shop' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                            'bg-gray-100 text-gray-700 border-gray-300'}`}>
-                      {v.status}
-                    </span>
-                  </td>
+                  <td className="px-4 py-3">{v.vehicleType}</td>
+                  <td className="px-4 py-3">{v.maxPayload} kg</td>
+                  <td className="px-4 py-3 font-mono">{v.currentOdometer}</td>
+                  <td className="px-4 py-3">{getStatusBadge(v.status)}</td>
                   <td className="px-4 py-3 text-right">
                     <button
-                      onClick={() => {
-                        const newVehicles = vehicles.map(item => item.id === v.id ? { ...item, status: v.status === 'Out of Service' ? 'Idle' as const : 'Out of Service' as const } : item);
-                        setVehicles(newVehicles);
-                      }}
+                      onClick={() => handleStatusToggle(v)}
                       className="p-1 mr-2 text-primary hover:bg-primary/10 rounded-md transition-colors text-xs font-semibold"
-                      title={v.status === 'Out of Service' ? "Mark as Idle" : "Mark Out of Service"}
+                      title={v.status === 'out_of_service' ? "Mark as Idle" : "Mark Out of Service"}
                     >
-                      {v.status === 'Out of Service' ? "Reactivate" : "Retire"}
+                      {v.status === 'out_of_service' ? "Reactivate" : "Retire"}
                     </button>
                     <button
-                      onClick={() => setVehicles(vehicles.filter(item => item.id !== v.id))}
+                      onClick={() => handleDelete(v._id)}
                       className="p-1 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                       title="Delete Vehicle"
                     >
@@ -188,47 +223,47 @@ const UserVehicles: React.FC = () => {
             <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
 
               <div>
-                <label className="block text-sm font-medium mb-1">License Plate</label>
+                <label className="block text-sm font-medium mb-1">Registration Number</label>
                 <input
                   type="text"
-                  {...register('plate')}
+                  {...register('registrationNumber')}
                   className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
                   placeholder="e.g. MH 00 AA 1111"
                 />
-                {errors.plate && <p className="text-xs text-destructive mt-1">{errors.plate.message}</p>}
+                {errors.registrationNumber && <p className="text-xs text-destructive mt-1">{errors.registrationNumber.message}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Max Payload</label>
-                <input
-                  type="text"
-                  {...register('capacity')}
-                  className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
-                  placeholder="e.g. 5 tonnes"
-                />
-                {errors.capacity && <p className="text-xs text-destructive mt-1">{errors.capacity.message}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Initial Odometer</label>
+                <label className="block text-sm font-medium mb-1">Max Payload (kg)</label>
                 <input
                   type="number"
-                  {...register('odometer')}
+                  {...register('maxPayload', { valueAsNumber: true })}
+                  className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
+                  placeholder="e.g. 5000"
+                />
+                {errors.maxPayload && <p className="text-xs text-destructive mt-1">{errors.maxPayload.message}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Current Odometer (km)</label>
+                <input
+                  type="number"
+                  {...register('currentOdometer', { valueAsNumber: true })}
                   className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
                   placeholder="e.g. 29000"
                 />
-                {errors.odometer && <p className="text-xs text-destructive mt-1">{errors.odometer.message}</p>}
+                {errors.currentOdometer && <p className="text-xs text-destructive mt-1">{errors.currentOdometer.message}</p>}
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1">Type</label>
                 <input
                   type="text"
-                  {...register('type')}
+                  {...register('vehicleType')}
                   className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm"
                   placeholder="e.g. Van, Truck, Trailer"
                 />
-                {errors.type && <p className="text-xs text-destructive mt-1">{errors.type.message}</p>}
+                {errors.vehicleType && <p className="text-xs text-destructive mt-1">{errors.vehicleType.message}</p>}
               </div>
 
               <div>

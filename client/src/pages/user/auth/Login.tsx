@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
+import authService from '../../../services/authService';
 
 const loginSchema = z.object({
     email: z.string().min(1, { message: 'Email is required' }).email({ message: 'Invalid email address' }),
@@ -14,31 +15,28 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
+    const [error, setError] = useState('');
     const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginFormValues>({
         resolver: zodResolver(loginSchema)
     });
 
     const onSubmit = async (data: LoginFormValues) => {
         try {
-            const response = await fetch('http://localhost:5000/api/fleetflow/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message || 'Login failed');
-
-            if (result.data && result.data.token) {
-                localStorage.setItem('token', result.data.token);
-            }
-
-            if (result.data?.user?.role === 'SYSTEM_ADMIN' || data.email.includes('admin')) {
+            setError('');
+            const result = await authService.login(data);
+            
+            // Navigate based on role
+            const userRole = result.data.user.role;
+            if (userRole === 'admin') {
                 navigate('/admin/dashboard');
+            } else if (userRole === 'manager') {
+                navigate('/admin/dashboard'); // Managers also use admin dashboard
             } else {
                 navigate('/user/dashboard');
             }
         } catch (error: any) {
-            alert(error.message);
+            const errorMessage = error.response?.data?.message || error.message || 'Login failed';
+            setError(errorMessage);
         }
     };
 
@@ -85,6 +83,12 @@ const Login: React.FC = () => {
                     </div>
 
                     <form className="mt-8 space-y-5" onSubmit={handleSubmit(onSubmit)}>
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl text-sm">
+                                {error}
+                            </div>
+                        )}
+                        
                         <div className="space-y-4">
                             {/* Email Address */}
                             <div className="space-y-1">
