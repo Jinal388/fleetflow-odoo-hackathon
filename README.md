@@ -55,7 +55,7 @@ cp .env.example .env
 3. Configure environment variables in `.env`:
 ```
 PORT=3000
-MONGODB_URI=mongodb://localhost:27017/fleetflow
+MONGODB_URI=
 JWT_SECRET=your-secret-key
 JWT_EXPIRES_IN=7d
 ```
