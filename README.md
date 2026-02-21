@@ -55,7 +55,7 @@ cp .env.example .env
 3. Configure environment variables in `.env`:
 ```
 PORT=3000
-MONGODB_URI=
+MONGODB_URI=your_mongodb_uri
 JWT_SECRET=your-secret-key
 JWT_EXPIRES_IN=7d
 ```
